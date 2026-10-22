@@ -1,5 +1,5 @@
 """
-ledger.py  —  tokens (owned by Member 3)
+ledger.py  —  tokens 
 ========================================
 Two ways tokens get paid:
   1. ONLINE:  state machine calls pay_ticket() when the red car exits on green.
@@ -44,6 +44,8 @@ def pay_ticket(store, ticket, now):
     results = {}
     for car_id in ticket["yielders"]:
         car = store.vehicles.get(car_id, {})
+        if car.get("link_mode") == "OFFLINE_BLE":
+            continue                      # no internet: paid later from its offline receipt
         user_id = car.get("user_id", car_id)
         results[car_id] = credit(store, user_id, REWARD_TOKENS, "yield_online",
                                  ticket["ticket_id"], now)
