@@ -1,5 +1,5 @@
 """
-state_machine.py  —  the "negotiator" (owned by Member 3)
+state_machine.py  —  the "negotiator" 
 =========================================================
 Called every 200 ms with tick(store, now). Each tick does 3 jobs:
 
@@ -234,7 +234,9 @@ def finish(store, t, final_state, now, events, why):
         for cid, amount in paid.items():
             store.vehicles.get(cid, {})["payout_at"] = now
             events.append(f"{now:6.1f}s  PAY     {t['ticket_id']}: {cid} +{amount} tokens")
-        if not paid:
+        if not paid and t["yielders"]:
+            events.append(f"{now:6.1f}s  PAY     {t['ticket_id']}: yielders offline - paid when their phones sync")
+        elif not paid:
             events.append(f"{now:6.1f}s  PAY     {t['ticket_id']}: nobody to pay (natural gap)")
 
 
