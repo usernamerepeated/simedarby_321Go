@@ -1,5 +1,5 @@
 """
-run_scenarios.py  —  test the state machine WITHOUT waiting for Member 1 & 2
+run_scenarios.py  —  test the state machine WITHOUT waiting for real phones or a real junction
 =============================================================================
 This file pretends to be Member 1 (positions/lanes) and Member 2 (TRAPPED /
 YIELDING / ABORT_HAZARD) with a very simple 1-D traffic simulation, so you can
@@ -8,6 +8,7 @@ with the real spatial_engine / sensor_fusion functions from your teammates.
 
 Run:   python run_scenarios.py            (all scenarios)
        python run_scenarios.py rogue      (one scenario)
+       python run_scenarios.py --real-m1 --real-m2   (use Member 1's and Member 2's real code)
 """
 import sys
 import time as _time
@@ -45,7 +46,8 @@ def raw_from_car(car, now):
     return {"car_id": car.car_id, "user_id": car.user_id, "intended_turn": car.intended_turn,
             "speed_kmh": round(car.speed_kmh, 1),
             "lin_x": 0.0, "lin_y": car.accel, "lin_z": 0.0,
-            "gyro_x": 0.0, "gyro_y": 0.0, "gyro_z": 0.0, "updated_at": now}
+            "gyro_x": 0.0, "gyro_y": 0.0, "gyro_z": 0.0, "updated_at": now,
+            "online": getattr(car, "online", True)}
 
 
 # ---------------------------------------------------------------------------
@@ -56,12 +58,16 @@ def mock_spatial(car):
         lane = SIDE_ROAD if not car.exited else (MAIN_FAR if car.intended_turn == "RIGHT" else MAIN_NEAR)
         return {"junction_id": JUNCTION, "in_geofence": True, "lane_role": lane,
                 "distance_to_junction_m": getattr(car, "queue_dist", 5.0), "approaching": False,
-                "ble_rssi": -45, "link_mode": "ONLINE_GPS"}
+                "ble_rssi": -45, "link_mode": _link(car)}
     d = abs(car.pos)
     rssi = round(-45 - 50 * min(d, 200) / 200)          # -45 dBm at 0 m ... -95 dBm at 200 m
     return {"junction_id": JUNCTION, "in_geofence": d <= GEOFENCE_RADIUS_M,
             "lane_role": car.lane, "distance_to_junction_m": round(d, 1),
-            "approaching": car.pos > 0, "ble_rssi": rssi, "link_mode": "ONLINE_GPS"}
+            "approaching": car.pos > 0, "ble_rssi": rssi, "link_mode": _link(car)}
+
+
+def _link(car):
+    return "ONLINE_GPS" if getattr(car, "online", True) else "OFFLINE_BLE"
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +150,11 @@ def traffic(lane, n, spacing_m, speed, behaviours, start=260):
 # ---------------------------------------------------------------------------
 # Scenario runner
 # ---------------------------------------------------------------------------
-def run(name, cars, duration=70, verbose=True, dump_at=None):
-    print(f"\n{'=' * 70}\nSCENARIO: {name}   [Member 2: {'REAL' if REAL_M2 else 'mock'}]\n{'=' * 70}")
+def run(name, cars, duration=70, verbose=True, dump_at=None, recorder=None):
+    print(f"\n{'=' * 70}\nSCENARIO: {name}   [Member 1: {'REAL' if REAL_M1 else 'mock'}, "
+          f"Member 2: {'REAL' if REAL_M2 else 'mock'}]\n{'=' * 70}")
+    if REAL_M1:
+        REAL_M1.reset()
     if REAL_M2:
         REAL_M2.reset()
     store = Store()
@@ -153,14 +162,21 @@ def run(name, cars, duration=70, verbose=True, dump_at=None):
     while now <= duration:
         for car in cars:                               # 1) phones send data
             fields = raw_from_car(car, now)
-            fields.update(mock_spatial(car))           # 2) Member 1 adds spatial fields
+            if REAL_M1:                                # 2) Member 1 adds spatial fields
+                fields.update(sim_geo.gps_fields(car, now))   # simulated phone GPS
+                fields.update(REAL_M1.compute(fields))
+            else:
+                fields.update(mock_spatial(car))
             if REAL_M2:                                # 3) Member 2 adds kinematic state
                 fields.update(REAL_M2.compute(fields, now))
                 car.kin = fields["kinematic_state"]    # drivers in the sim react to it
             else:
                 fields.update(mock_sensor(car, now))
             store.update_vehicle(car.car_id, fields)
-        for e in state_machine.tick(store, now):       # 4) YOUR state machine
+        events = state_machine.tick(store, now)       # 4) YOUR state machine
+        if recorder:                                   #    offline phones save receipts
+            events += recorder.observe(store, now)
+        for e in events:
             if verbose:
                 print(e)
         if dump_at and abs(now - dump_at) < TICK_S / 2:
@@ -168,6 +184,10 @@ def run(name, cars, duration=70, verbose=True, dump_at=None):
             print(f"        (saved mock_snapshot.json at t={now:.1f}s for the frontend team)")
         drive(cars, store, now, TICK_S)                # 5) drivers react to their screens
         now = round(now + TICK_S, 3)
+    if recorder:
+        print("   --- phones back online: uploading receipts ---")
+        for rid, status in ledger.sync_offline_receipts(store, recorder.take_all(), now):
+            print(f"   {rid}: {status}")
     print("Wallets:", {u: w["balance"] for u, w in store.wallets.items()} or "none")
     return store
 
@@ -242,14 +262,32 @@ def scenario_empty():
     return run("8. No traffic at all -> instant green, nobody to pay", [red], duration=30)
 
 
+def scenario_offline_live():
+    import offline_receipts
+    red = SimCar("car_red_1", SIDE_ROAD, 0, 0, "red")
+    cars = [red] + traffic(MAIN_NEAR, 8, 45, 50, lambda i: "yield") \
+                 + traffic(MAIN_FAR, 8, 45, 50, lambda i: "yield", start=240)
+    for c in cars:
+        c.online = False                               # nobody has internet at this junction
+    return run("9. No internet: BLE receipts saved on phones, paid after sync", cars,
+               recorder=offline_receipts.OfflineRecorder())
+
+
 SCENARIOS = {"normal": scenario_normal, "rogue": scenario_rogue, "left": scenario_left,
              "ignore": scenario_ignore, "offline": scenario_offline, "queue": scenario_queue,
-             "no_green": scenario_no_green, "empty": scenario_empty}
+             "no_green": scenario_no_green, "empty": scenario_empty,
+             "offline_live": scenario_offline_live}
 
+REAL_M1 = None
 REAL_M2 = None
+sim_geo = None
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if "--real-m1" in args:                            # test with Member 1's real spatial_engine.py
+        args.remove("--real-m1")
+        import spatial_engine as REAL_M1
+        import sim_geo
     if "--real-m2" in args:                            # test with Member 2's real sensor_fusion.py
         args.remove("--real-m2")
         import sensor_fusion as REAL_M2
