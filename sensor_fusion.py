@@ -1,8 +1,6 @@
 """
-sensor_fusion.py  —  Member 2 (Telemetry & Sensor Fusion)
+sensor_fusion.py  —  Telemetry & Sensor Fusion
 =========================================================
-Aligned to contract.py v1.1. Same logic as Member 2's original Phyphox script,
-plus the fixes listed in the "M2 alignment" notes:
 
   * one detector PER CAR (dict keyed by car_id), not one global detector
   * compute(raw, now) -> {"kinematic_state", "accel_long_ms2", "gyro_ok"}  (the contract)
@@ -17,7 +15,8 @@ plus the fixes listed in the "M2 alignment" notes:
   * backup path: GPS speed drop >= 8 km/h within 3 s also counts as YIELDING
     (gentle lift-off rarely reaches -1.2 m/s^2)
 
-Live phone test (Member 2's original Phyphox mode):   python sensor_fusion.py
+Live phone test (Phyphox, with GPS checks + real lane detection):   python sensor_fusion.py
+Find the phone's forward axis from a recorded drive:  python sensor_fusion.py --calibrate sensor_log.csv
 """
 import csv
 import json
@@ -175,14 +174,17 @@ def reset():
 
 
 # ==========================================
-# Live phone mode (Member 2's original Phyphox loop)
+# Live phone mode (Member 2's Phyphox loop, now with his GPS checks + the real
+# location engine, so a real phone runs the same pipeline as the demo)
 # ==========================================
-PHYPHOX_URL = ("http://192.168.0.191:8080/get"
-               "?linX&linY&linZ&lin_time&gyrX&gyrY&gyrZ&gyr_time&locV")
-# locV = GPS speed in m/s, if you add the Location (GPS) sensor to the same Phyphox
-# experiment under that buffer name. Missing -> speed stays None.
+PHYPHOX_URL = ("http://192.168.0.191:8080/get"          # CHANGE to your phone's IP
+               "?linX&linY&linZ&lin_time&gyrX&gyrY&gyrZ&gyr_time"
+               "&locLat&locLon&locV&loc_time&locDir&locAccuracy")
 CAR_ID = "car_blue_1"        # the phone plays this car in the demo
 LOG_FILE = "sensor_log.csv"
+GPS_MAX_AGE_S = 5.0          # reject a GPS fix not refreshed within 5 s (from ai_traffic_cop.py)
+GPS_MAX_ACCURACY_M = 25.0    # reject a GPS fix worse than 25 m (from ai_traffic_cop.py)
+_gps = {"last_fix_time": None, "last_update_wall": None}
 
 
 def read_phyphox():
@@ -191,28 +193,51 @@ def read_phyphox():
         buf = json.loads(resp.read().decode("utf-8"))["buffer"]
 
     def latest(key, required=True):
-        vals = buf.get(key, {}).get("buffer") or []
-        vals = [v for v in vals if v is not None]
-        if not vals:
-            if required:
-                raise ValueError(f"No data received for sensor: {key}")
-            return None
-        return float(vals[-1])
+        item = buf.get(key, {})
+        vals = item.get("buffer", []) if isinstance(item, dict) else []
+        for v in reversed(vals):
+            try:
+                x = float(v)
+                if math.isfinite(x):
+                    return x
+            except (TypeError, ValueError):
+                continue
+        if required:
+            raise ValueError(f"No data received for sensor: {key}")
+        return None
 
-    loc_v = latest("locV", required=False)
-    return {"car_id": CAR_ID,
+    lat, lon = latest("locLat", False), latest("locLon", False)
+    speed_ms, fix_t = latest("locV", False), latest("loc_time", False)
+    heading, acc = latest("locDir", False), latest("locAccuracy", False)
+
+    wall = time.monotonic()
+    present = None not in (lat, lon, speed_ms, fix_t) and speed_ms >= 0
+    if present and (_gps["last_fix_time"] is None or fix_t > _gps["last_fix_time"]):
+        _gps["last_fix_time"], _gps["last_update_wall"] = fix_t, wall
+    fresh = _gps["last_update_wall"] is not None and wall - _gps["last_update_wall"] <= GPS_MAX_AGE_S
+    accurate = acc is None or acc <= GPS_MAX_ACCURACY_M
+    gps_ok = present and fresh and accurate
+
+    return {"car_id": CAR_ID, "user_id": f"user_{CAR_ID}",
             "lin_x": latest("linX"), "lin_y": latest("linY"), "lin_z": latest("linZ"),
             "lin_time": latest("lin_time"),
             "gyro_x": latest("gyrX"), "gyro_y": latest("gyrY"), "gyro_z": latest("gyrZ"),
-            "speed_kmh": loc_v * 3.6 if loc_v is not None else None,
-            "lane_role": "MAIN_NEAR", "approaching": True}   # placeholders until Member 1 is live
+            "lat": lat if gps_ok else None, "lon": lon if gps_ok else None,
+            "speed_kmh": speed_ms * 3.6 if gps_ok else None,
+            "heading_deg": heading if gps_ok else None,
+            "gps_ok": gps_ok, "gps_accuracy_m": acc}
 
 
 def run_live_phone():
+    try:
+        import spatial_engine            # Member 1: real lane / distance from the phone's GPS
+    except ImportError:
+        spatial_engine = None
     start, last_t = time.monotonic(), None
     with open(LOG_FILE, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["timestamp", "car_id", "lin_time", "speed_kmh",
+        w.writerow(["timestamp", "car_id", "lin_time", "lin_x", "lin_y", "lin_z", "speed_kmh",
+                    "gps_ok", "gps_accuracy_m", "lane_role", "distance_to_junction_m",
                     "accel_long_ms2", "gyro_ok", "kinematic_state"])
         print("Live Phyphox mode. Ctrl+C to stop.")
         try:
@@ -223,14 +248,23 @@ def run_live_phone():
                         time.sleep(0.05)
                         continue
                     last_t = raw["lin_time"]
+                    if spatial_engine:
+                        raw.update(spatial_engine.compute(raw))
+                    else:                                          # no location engine: assume main road
+                        raw.update({"lane_role": "MAIN_NEAR", "approaching": True,
+                                    "distance_to_junction_m": None})
                     out = compute(raw, time.monotonic() - start)
                     w.writerow([datetime.now().isoformat(timespec="milliseconds"), CAR_ID,
-                                raw["lin_time"], raw["speed_kmh"], out["accel_long_ms2"],
-                                out["gyro_ok"], out["kinematic_state"]])
+                                raw["lin_time"], raw["lin_x"], raw["lin_y"], raw["lin_z"],
+                                raw["speed_kmh"], raw["gps_ok"], raw["gps_accuracy_m"],
+                                raw.get("lane_role"), raw.get("distance_to_junction_m"),
+                                out["accel_long_ms2"], out["gyro_ok"], out["kinematic_state"]])
                     f.flush()
-                    print(f"{raw['lin_time']:.2f}s | a_long {out['accel_long_ms2']:+.2f} m/s^2 | "
-                          f"gyro_ok {out['gyro_ok']} | {out['kinematic_state']}")
-                    time.sleep(0.2)                    # 5 Hz, same as the backend tick
+                    spd = f"{raw['speed_kmh']:.1f} km/h" if raw["speed_kmh"] is not None else "GPS --"
+                    print(f"{raw['lin_time']:7.2f}s | {spd:>10} | {raw.get('lane_role')} | "
+                          f"a_long {out['accel_long_ms2']:+.2f} m/s^2 | gyro_ok {out['gyro_ok']} | "
+                          f"{out['kinematic_state']}")
+                    time.sleep(0.2)                                # 5 Hz, same as the backend tick
                 except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
                     print("Sensor read error:", e)
                     time.sleep(1)
@@ -238,5 +272,69 @@ def run_live_phone():
             print(f"\nStopped. Log saved to {LOG_FILE}")
 
 
+# ==========================================
+# Phone-mount calibration:  python sensor_fusion.py --calibrate sensor_log.csv
+# Drive with the phone in its real mount: cruise, brake firmly, accelerate. The axis
+# whose acceleration best follows the GPS speed change is the car's forward axis.
+# ==========================================
+def calibrate_axis(csv_path):
+    def col(row, *names):
+        for n in names:
+            v = row.get(n)
+            if v not in (None, "", "None"):
+                try:
+                    return float(v)
+                except ValueError:
+                    pass
+        return None
+
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    pts = []
+    for row in rows:
+        t = col(row, "elapsed_seconds", "lin_time")
+        v = col(row, "gps_speed_kmh", "speed_kmh")
+        ax = {a: col(row, f"lin_{a}_filtered", f"lin_{a}") for a in "xyz"}
+        if t is not None and v is not None and None not in ax.values():
+            pts.append((t, v / 3.6, ax))
+    # speed change per second (m/s^2) between GPS samples at least 0.8 s apart
+    samples, j = [], 0
+    for i in range(len(pts)):
+        while j < i and pts[i][0] - pts[j][0] > 2.0:
+            j += 1
+        if pts[i][0] - pts[j][0] >= 0.8 and pts[i][1] != pts[j][1]:
+            dvdt = (pts[i][1] - pts[j][1]) / (pts[i][0] - pts[j][0])
+            samples.append((dvdt, pts[i][2]))
+    speeds = [p[1] * 3.6 for p in pts]
+    if len(samples) < 15 or not speeds or max(speeds) - min(speeds) < 10:
+        print(f"Not enough driving data in {csv_path}: {len(samples)} usable samples, speed range "
+              f"{(max(speeds) - min(speeds)) if speeds else 0:.1f} km/h. Record a real drive with the "
+              f"phone mounted (cruise, brake firmly, accelerate), then try again.")
+        return None
+
+    def corr(xs, ys):
+        n = len(xs)
+        mx, my = sum(xs) / n, sum(ys) / n
+        sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+        sxx = sum((x - mx) ** 2 for x in xs)
+        syy = sum((y - my) ** 2 for y in ys)
+        return sxy / math.sqrt(sxx * syy) if sxx and syy else 0.0
+
+    dv = [s[0] for s in samples]
+    scores = {a: corr([s[1][a] for s in samples], dv) for a in "xyz"}
+    best = max(scores, key=lambda a: abs(scores[a]))
+    sign = 1 if scores[best] > 0 else -1
+    for a in "xyz":
+        print(f"  axis {a}: correlation with speed change = {scores[a]:+.2f}")
+    print(f"\nSet in sensor_fusion.py:   LONG_AXIS = \"{best}\"   LONG_SIGN = {sign}")
+    if abs(scores[best]) < 0.5:
+        print("Warning: weak match (< 0.5). Mount the phone firmly and record a longer drive.")
+    return best, sign
+
+
 if __name__ == "__main__":
-    run_live_phone()
+    import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == "--calibrate":
+        calibrate_axis(sys.argv[2])
+    else:
+        run_live_phone()
