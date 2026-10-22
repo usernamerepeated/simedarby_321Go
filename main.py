@@ -1,5 +1,5 @@
 """
-main.py  —  the real-time backend loop (owned by Member 3, used for the live demo)
+main.py  —  the real-time backend loop (used for the live demo)
 ==================================================================================
 Every 200 ms:
    1. get raw data for each car         (simulator now, real phones later)
@@ -30,6 +30,7 @@ from contract import TICK_S, SIDE_ROAD, MAIN_NEAR, MAIN_FAR
 from store import Store
 import state_machine
 import run_scenarios as sim   # mock Member 1 + Member 2 + fake traffic
+import sim_geo                # simulated phone GPS (lat/lon/heading) for the real spatial_engine
 
 # ---- try to load teammates' real modules; fall back to mocks ----
 try:
@@ -65,11 +66,12 @@ def main():
         while True:
             now = time.time() - start
             for car in cars:
-                raw = sim.raw_from_car(car, now)
+                raw = {**sim.raw_from_car(car, now), **sim_geo.gps_fields(car, now)}
                 spatial = spatial_engine.compute(raw) if spatial_engine else sim.mock_spatial(car)
                 # Member 2 needs Member 1's lane_role + approaching, so pass both
                 motion = (sensor_fusion.compute({**raw, **spatial}, now) if sensor_fusion
                           else sim.mock_sensor(car, now))
+                car.kin = motion["kinematic_state"]   # simulated drivers react to Member 2's state
                 store.update_vehicle(car.car_id, {**raw, **spatial, **motion})
             for e in state_machine.tick(store, now):
                 print(e)
