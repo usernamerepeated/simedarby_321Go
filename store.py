@@ -1,5 +1,5 @@
 """
-store.py  —  where all live data lives (owned by Member 3)
+store.py  —  where all live data lives 
 ==========================================================
 Think of this as a tiny database with 4 tables (Python dicts):
     vehicles  {car_id: {...}}      live position + states of every car
@@ -14,6 +14,7 @@ and other laptops can read it.
 """
 import copy
 import json
+import threading
 
 try:
     import requests  # only needed for Firebase mirror
@@ -31,6 +32,7 @@ class Store:
         self._ticket_counter = 0
         self._firebase_url = None
         self._last_push = -1.0
+        self._push_busy = False         # True while an upload is still in flight
 
     # ---------------- vehicles ----------------
     def update_vehicle(self, car_id, fields):
@@ -75,12 +77,22 @@ class Store:
         self._firebase_url = db_url.rstrip("/")
 
     def push_to_firebase(self, now, every_s=0.5):
-        """Push at most every 0.5 s (Firebase free tier is happier this way)."""
-        if not self._firebase_url or now - self._last_push < every_s:
+        """Upload the snapshot at most every 0.5 s, in a BACKGROUND thread, so a slow
+        network can never slow the 200 ms backend loop. If the previous upload is
+        still going, this one is simply skipped (the next one carries newer data)."""
+        if not self._firebase_url or self._push_busy or now - self._last_push < every_s:
             return
-        self._last_push = now
-        try:
-            requests.put(f"{self._firebase_url}/live.json",
-                         json=self.snapshot(), timeout=2)
-        except Exception as e:  # never let the network crash the demo
-            print(f"[firebase] push failed: {e}")
+        self._last_push, self._push_busy = now, True
+        snap = self.snapshot()                       # copy taken now, uploaded in background
+
+        def upload():
+            try:
+                r = requests.put(f"{self._firebase_url}/live.json", json=snap, timeout=3)
+                if r.status_code != 200:             # e.g. 401 = rules locked / test mode expired
+                    print(f"[firebase] HTTP {r.status_code}: {r.text[:120]}")
+            except Exception as e:                   # never let the network crash the demo
+                print(f"[firebase] push failed: {e}")
+            finally:
+                self._push_busy = False
+
+        threading.Thread(target=upload, daemon=True).start()
