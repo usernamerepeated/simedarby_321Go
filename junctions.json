@@ -1,0 +1,20 @@
+{
+  "_how_to_fill": [
+    "PLACEHOLDER coordinates - replace with your chosen junction before the demo.",
+    "Google Maps: right-click a spot -> click the lat,lon numbers to copy them.",
+    "centre            = middle of the T where the side road meets the main road",
+    "side_wait_point   = where the waiting (red) car stops on the side road, ~5-8 m back from the main road",
+    "near_traffic_from = a point ~200 m along the main road to your RIGHT when you sit at the side road facing the main road",
+    "                    (Malaysia drives on the left, so that is where the NEAR-lane traffic comes from)",
+    "Then run:  python spatial_engine.py   -> it checks the geometry and prints the lane bearings."
+  ],
+  "junctions": [
+    {
+      "junction_id": "elmina_J1",
+      "name": "Demo T-junction (placeholder coordinates)",
+      "centre": [3.1236000, 101.6359000],
+      "side_wait_point": [3.1235280, 101.6359000],
+      "near_traffic_from": [3.1236000, 101.6376990]
+    }
+  ]
+}
