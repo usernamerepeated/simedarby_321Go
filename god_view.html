@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>321Go God View</title>
+<style>
+  :root {
+    --bg: #e9edf2; --map: #edf0f3; --road: #ffffff; --road-edge: #c9d1db; --panel: #ffffff;
+    --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --blue: #2f6fed; --navy: #1f2937;
+    --green: #1f8a4c; --green-soft: #22c55e; --red: #d93838; --amber: #f59e0b; --gold: #d4a017;
+    --purple: #7c3aed;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; overflow: hidden; }
+  .app { display: grid; grid-template-columns: 1fr 440px; height: 100vh; }
+  .mapwrap { position: relative; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .maptag { position: absolute; left: 16px; top: 14px; background: rgba(255,255,255,.92); border-radius: 12px;
+    padding: 8px 12px; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .maptag b { font-size: 16px; } .maptag span { color: var(--muted); font-size: 12px; display: block; }
+  .legend { position: absolute; left: 16px; bottom: 14px; background: rgba(255,255,255,.92); border-radius: 12px;
+    padding: 8px 12px; font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; max-width: 92%;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .legend i { display: inline-block; width: 12px; height: 8px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+  .legend .ring { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--amber); background: none; }
+  .banner { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: var(--navy); color: #fff;
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; display: none; }
+
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 10px;
+    display: flex; flex-direction: column; gap: 12px; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .brand { font-weight: 800; font-size: 22px; } .brand small { font-weight: 600; color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .clock { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; text-align: right; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #f1f5f9; color: #334155; font-weight: 600; }
+  .chip.ok { background: #dcfce7; color: #166534; } .chip.warn { background: #fef3c7; color: #92400e; }
+  .scenario { font-weight: 700; font-size: 15px; }
+  .card { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+  .label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+  .trow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .pill { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; color: #fff; background: var(--navy); white-space: nowrap; }
+  .tdesc { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .phones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .phone { border-radius: 18px; padding: 10px 11px 26px; min-height: 150px; color: #fff; background: var(--navy);
+    border: 3px solid #111; position: relative; transition: background .25s; }
+  .phone .who { font-size: 10px; opacity: .8; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .phone .head { font-weight: 900; font-size: 18px; line-height: 1.1; margin-top: 8px; }
+  .phone .sub { font-size: 12px; margin-top: 6px; opacity: .92; }
+  .phone .foot { position: absolute; bottom: 7px; left: 11px; right: 11px; font-size: 10px; opacity: .75; display: flex; justify-content: space-between; }
+  .phone.light { background: #fff; color: var(--ink); border-color: #d1d5db; }
+  .phone.flash { animation: flash .5s steps(2) infinite; }
+  @keyframes flash { 50% { background: #7f1d1d; } }
+  .lanes .lane { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .lanes .lane:first-of-type { border-top: 0; }
+  .lname { font-weight: 700; } .lmeta { color: var(--muted); font-size: 12px; }
+  .ok { background: var(--green); } .no { background: var(--red); }
+  #chart { width: 100%; height: 86px; display: block; }
+  .log { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; max-height: 190px; overflow: hidden; }
+  .log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tokens { display: flex; justify-content: space-between; align-items: baseline; }
+  .tokens b { font-size: 20px; color: var(--gold); }
+  .wl { font-size: 12px; color: var(--muted); }
+  .keys { font-size: 11.5px; color: var(--muted); line-height: 1.6; border-top: 1px solid var(--line); padding-top: 8px; }
+  kbd { font: 11px ui-monospace, monospace; background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; color: #0f172a; }
+  .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.72); display: flex; align-items: center; justify-content: center;
+    color: #fff; z-index: 10; cursor: pointer; }
+  .overlay div { text-align: center; } .overlay h1 { margin: 0 0 6px; font-size: 34px; } .overlay p { margin: 0; opacity: .85; }
+  .offline { position: absolute; right: 18px; top: 14px; width: 360px; background: #fff; border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.18); display: none; border-top: 5px solid var(--purple); }
+  .offline .r { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .st-paid { color: var(--green); font-weight: 800; } .st-bad { color: var(--red); font-weight: 800; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="mapwrap">
+    <canvas id="map"></canvas>
+    <div class="maptag"><b id="jname">T-junction</b><span>Live God View · road width not to scale</span></div>
+    <div class="banner" id="banner"></div>
+    <div class="offline" id="offline"></div>
+    <div class="legend">
+      <span><i style="background:#94a3b8"></i>Cruising</span>
+      <span><i style="background:#22c55e"></i>Yielding</span>
+      <span><i style="background:#ef4444"></i>Abort (sped up)</span>
+      <span><i style="background:#f59e0b"></i>Trapped (waiting)</span>
+      <span><i class="ring"></i>Asked to yield</span>
+      <span><i style="background:rgba(34,197,94,.35)"></i>Gap open</span>
+      <span><i style="background:rgba(239,68,68,.3)"></i>No gap yet</span>
+    </div>
+  </div>
+  <aside>
+    <div class="top">
+      <div class="brand">321Go<small>God View</small></div>
+      <div class="clock"><span id="clock">t = 0.0 s</span><br><span id="speed">1×</span></div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="scenario" id="scenario">—</div>
+
+    <div class="card">
+      <div class="trow"><div class="label" id="tlabel">Ticket</div><span class="pill" id="tpill">NO TICKET</span></div>
+      <div class="tdesc" id="tdesc">Waiting for a car to get stuck at the side road.</div>
+    </div>
+
+    <div class="phones">
+      <div class="phone" id="redphone"><div class="who" id="redwho">Waiting driver</div><div class="head">—</div><div class="sub"></div><div class="foot"></div></div>
+      <div class="phone light" id="bluephone"><div class="who" id="bluewho">Main-road driver</div><div class="head">—</div><div class="sub"></div><div class="foot"></div></div>
+    </div>
+
+    <div class="card lanes" id="lanes"><div class="label">Lanes the waiting car needs</div><div class="lmeta">No active ticket.</div></div>
+
+    <div class="card"><div class="label" id="chartlabel">Main-road driver speed (last 12 s)</div><canvas id="chart"></canvas></div>
+
+    <div class="card"><div class="label">Event log</div><div class="log" id="log"></div></div>
+
+    <div class="card"><div class="tokens"><div class="label" style="margin:0">Tokens paid this run</div><b id="paid">0</b></div><div class="wl" id="wallets"></div></div>
+
+    <div class="keys">
+      <kbd>1</kbd> normal &nbsp;<kbd>2</kbd> rogue driver &nbsp;<kbd>3</kbd> left turn &nbsp;<kbd>4</kbd> offline sync<br>
+      <kbd>5</kbd> ignored offer &nbsp;<kbd>6</kbd> two cars &nbsp;<kbd>7</kbd> forces out &nbsp;<kbd>8</kbd> no internet<br>
+      <kbd>R</kbd> restart &nbsp;<kbd>Space</kbd> pause &nbsp;<kbd>←</kbd><kbd>→</kbd> speed &nbsp;<kbd>M</kbd> sound &nbsp;<kbd>F</kbd> fullscreen
+    </div>
+  </aside>
+</div>
+<div class="overlay" id="start"><div><h1>321Go · God View</h1><p>Click anywhere to start (turns on sound and voice)</p></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const COL = { CRUISING: "#94a3b8", YIELDING: "#22c55e", ABORT_HAZARD: "#ef4444", TRAPPED: "#f59e0b" };
+const TSTATE = {
+  SCANNING:      ["#1f2937", "Looking for main-road drivers to ask."],
+  OFFER_SENT:    ["#2f6fed", "Asked main-road drivers to ease off."],
+  PARTIAL_YIELD: ["#f59e0b", "One lane has a gap — waiting for the other."],
+  CLEAR_TO_EXIT: ["#1f8a4c", "Gap open in every lane — waiting driver can go."],
+  ABORT_RED:     ["#d93838", "A yielding driver sped up — STOP sent to the waiting driver."],
+  COMPLETED:     ["#1f8a4c", "Exited on green — yielding drivers paid."],
+  CANCELLED:     ["#6b7280", "Left without a green light — nobody is paid."],
+  EXPIRED:       ["#6b7280", "Timed out after 5 minutes."],
+};
+const LANE_NAME = { MAIN_NEAR: "Near lane · traffic from your right", MAIN_FAR: "Far lane · traffic from your left" };
+let S = null, alerts = {}, soundOn = true, audio = null, started = false;
+const shown = {};           // car id -> displayed {x, y, ang}
+const prevUi = {};          // car id -> last ui_command (for sounds)
+const floaters = [];        // "+10" texts
+let lastT = 0, lastKey = null, lastSoundAt = {}, lastVoice = { text: "", at: 0 };
+
+// ---------------- data ----------------
+async function poll() {
+  try {
+    const r = await fetch("/state", { cache: "no-store" });
+    S = await r.json();
+    if (S.key + S.title !== lastKey || S.t < lastT) { for (const k in prevUi) delete prevUi[k]; floaters.length = 0; lastKey = S.key + S.title; }
+    lastT = S.t;
+    updatePanel(); handleSounds();
+  } catch (e) { /* server restarting */ }
+}
+setInterval(poll, 100);
+fetch("/alerts").then(r => r.json()).then(a => alerts = a);
+const cmd = k => fetch("/cmd?k=" + encodeURIComponent(k), { method: "POST" });
+
+document.addEventListener("keydown", e => {
+  if (!started) return;
+  const k = e.key.toLowerCase();
+  if ("12345678".includes(k) && k.length === 1) cmd(k);
+  else if (k === "r") cmd("r");
+  else if (k === " ") { cmd("space"); e.preventDefault(); }
+  else if (e.key === "ArrowRight") cmd("faster");
+  else if (e.key === "ArrowLeft") cmd("slower");
+  else if (k === "m") { soundOn = !soundOn; if (!soundOn) speechSynthesis.cancel(); }
+  else if (k === "f") { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+});
+$("start").addEventListener("click", () => {
+  started = true; $("start").style.display = "none";
+  try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
+});
+
+// ---------------- sound (generated, no files needed) ----------------
+function tone(f, t0, dur, type = "sine", g = 0.18) {
+  if (!audio) return;
+  const o = audio.createOscillator(), v = audio.createGain(), t = audio.currentTime + t0;
+  o.type = type; o.frequency.value = f;
+  v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(g, t + 0.015); v.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(v).connect(audio.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+const SOUNDS = {
+  soft_chime: () => { tone(880, 0, .22); tone(1320, .16, .32); },
+  thank_you_chime: () => { tone(1047, 0, .18); tone(1568, .14, .35); },
+  rising_beeps: () => { tone(660, 0, .14, "triangle", .3); tone(990, .2, .22, "triangle", .3); },
+  urgent_alarm_repeat: () => { for (let i = 0; i < 10; i++) tone(i % 2 ? 740 : 1040, i * .14, .12, "square", .11); },
+};
+function speak(text, urgent) {
+  if (!("speechSynthesis" in window) || !text) return;
+  const now = performance.now();
+  if (text === lastVoice.text && now - lastVoice.at < 4000) return;
+  lastVoice = { text, at: now };
+  if (urgent) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; speechSynthesis.speak(u);
+}
+function handleSounds() {
+  for (const v of S.vehicles) {
+    const before = prevUi[v.id]; prevUi[v.id] = v.ui;
+    if (before === undefined || before === v.ui) continue;
+    if (v.ui === "PAYOUT") floaters.push({ id: v.id, at: performance.now() });
+    const spec = alerts[v.ui]; if (!spec || !soundOn || !started) continue;
+    const now = performance.now();
+    if (spec.sound && SOUNDS[spec.sound] && now - (lastSoundAt[spec.sound] || 0) > 400) { lastSoundAt[spec.sound] = now; SOUNDS[spec.sound](); }
+    if (spec.voice) speak(spec.voice, v.ui === "ABORT_RED");
+  }
+}
+
+// ---------------- side panel ----------------
+function setPhone(el, cls, who, head, sub, foot, flash) {
+  el.className = "phone " + (cls || "") + (flash ? " flash" : "");
+  el.style.background = "";
+  el.querySelector(".who").textContent = who; el.querySelector(".head").textContent = head;
+  el.querySelector(".sub").textContent = sub; el.querySelector(".foot").innerHTML = foot || "";
+}
+function phoneColor(el, color) { el.style.background = color; }
+function updatePanel() {
+  $("jname").textContent = S.junction;
+  $("clock").textContent = `t = ${S.t.toFixed(1)} s`;
+  $("speed").textContent = S.paused ? "⏸ paused" : S.ff ? "⏩ ×4 fast-forward" : `${S.speed}× speed`;
+  $("chips").innerHTML = `<span class="chip">contract v${S.contract}</span><span class="chip ok">Member 1 REAL</span>` +
+    `<span class="chip ${S.m2 ? "ok" : "warn"}">Member 2 ${S.m2 ? "REAL" : "mock"}</span><span class="chip">reward +${S.reward}</span>`;
+  $("scenario").textContent = `Scenario ${S.key} · ${S.title}`;
+  const bn = $("banner");
+  if (S.ff) { bn.style.display = "block"; bn.textContent = "Confirming the car is really stuck (15 s stopped) — fast-forwarding ×4"; }
+  else if (S.paused) { bn.style.display = "block"; bn.textContent = "Paused — press Space"; }
+  else if (S.done) { bn.style.display = "block"; bn.textContent = "Traffic finished — press R to restart or 1–7"; }
+  else bn.style.display = "none";
+
+  // ticket
+  const t = S.ticket;
+  if (t) {
+    const [c, d] = TSTATE[t.state] || ["#1f2937", ""];
+    $("tlabel").textContent = `Ticket ${t.id} · turn ${t.turn.toLowerCase()} · ${t.age}s`;
+    $("tpill").textContent = t.state.replaceAll("_", " "); $("tpill").style.background = c;
+    $("tdesc").textContent = d + (t.yielders.length ? `  Yielding: ${t.yielders.join(", ")}.` : "");
+  } else { $("tlabel").textContent = "Ticket"; $("tpill").textContent = "NO TICKET"; $("tpill").style.background = "#9ca3af";
+    $("tdesc").textContent = "Waiting for a car to get stuck at the side road."; }
+
+  // red phone
+  const rp = $("redphone"), r = S.red;
+  if (!r) setPhone(rp, "", "Waiting driver", "—", "");
+  else {
+    const who = `Waiting driver · ${r.id}`, foot = `<span>${r.speed} km/h</span><span>${r.lane === "SIDE_ROAD" ? "side road" : "main road"}</span>`;
+    const m = {
+      SCANNING: ["#1f2937", "SCANNING", "Auto-scanning incoming lanes…"],
+      WAIT_HOLD: ["#1f2937", "HOLD", "1 of 2 lanes clear — waiting for the other"],
+      GO_GREEN: ["#1f8a4c", "GAP OPENING", "Check for bikes & go"],
+      ABORT_RED: ["#d93838", "STOP!", "Car accelerating — wait"],
+      DONE: ["#ffffff", "EXITED ✓", "Ticket closed"],
+    }[r.ui];
+    if (m) { setPhone(rp, m[0] === "#ffffff" ? "light" : "", who, m[1], m[2], foot, r.ui === "ABORT_RED"); if (m[0] !== "#ffffff") phoneColor(rp, m[0]); }
+    else { setPhone(rp, "", who, r.lane === "SIDE_ROAD" ? "WAITING" : "DRIVING",
+      r.lane === "SIDE_ROAD" ? `Stopped ${r.wait.toFixed(0)} s · stuck after 15 s` : "Normal navigation", foot); phoneColor(rp, "#334155"); }
+  }
+  // blue phone
+  const bp = $("bluephone"), b = S.blue;
+  if (!b) { setPhone(bp, "light", "Main-road driver", "Continue straight", "No yield request yet"); }
+  else {
+    const who = `Main-road driver · ${b.id}`, foot = `<span>${b.speed} km/h</span><span>${b.dist} m to junction</span>`;
+    const m = {
+      PROMPT_YIELD: ["#f59e0b", "CAR WAITING AHEAD", `Ease off to earn +${S.reward} tokens`],
+      YIELD_CONFIRMED: ["#1f2937", "HOLDING GAP", "Slowdown detected — thank you"],
+      PAYOUT: ["#1f8a4c", `+${S.reward} TOKENS EARNED`, "The waiting car used your gap"],
+    }[b.ui];
+    if (m) { setPhone(bp, "", who, m[1], m[2], foot); phoneColor(bp, m[0]); }
+    else { setPhone(bp, "light", who, "Continue straight", "Navigation", foot); bp.style.background = ""; }
+  }
+
+  // lanes
+  if (t && t.active) {
+    $("lanes").innerHTML = `<div class="label">Lanes the waiting car needs</div>` + t.lanes.map(l => {
+      const lead = l.lead ? `${l.lead}: ${l.lead_dist} m · ${l.tta} s away (needs ≥ ${l.needed} s)` : "No app car coming";
+      return `<div class="lane"><div><div class="lname">${LANE_NAME[l.lane]}</div><div class="lmeta">${lead}</div>
+        <div class="lmeta">${l.offered ? "Asked: " + l.offered : ""}</div></div>
+        <div><span class="pill ${l.clear ? "ok" : "no"}">${l.clear ? "GAP" : "WAIT"}</span></div></div>`;
+    }).join("");
+  } else $("lanes").innerHTML = `<div class="label">Lanes the waiting car needs</div><div class="lmeta">No active ticket.</div>`;
+
+  // log
+  const colour = s => /ABORT|STOP/.test(s) ? "#d93838" : /PAY/.test(s) ? "#b8860b" : /YIELD /.test(s) ? "#1f8a4c" :
+    /OFFER|IGNORED/.test(s) ? "#b45309" : /OPEN/.test(s) ? "#2f6fed" : /OFFLINE|BLE /.test(s) ? "#7c3aed" : /CLOSE/.test(s) ? "#111827" : "#6b7280";
+  $("log").innerHTML = S.events.slice(-10).map(e => `<div style="color:${colour(e)}">${e.trim().replace(/</g, "&lt;")}</div>`).join("");
+
+  $("paid").textContent = S.paid_total;
+  $("wallets").textContent = S.wallets.length ? S.wallets.map(w => `${w.user.replace("user_", "")} ${w.balance}`).join(" · ") : "No tokens yet.";
+
+  // offline overlay
+  const off = $("offline");
+  if (S.offline) {
+    off.style.display = "block";
+    off.innerHTML = `<div class="label" style="color:#7c3aed">Offline BLE receipts synced</div>` +
+      `<div class="lmeta" style="margin-bottom:6px">Both phones saved receipts with no internet; the server pays only when they match.</div>` +
+      S.offline.rows.map(x => `<div class="r"><span>${x.label}</span><span class="${x.status.startsWith("PAID") ? "st-paid" : "st-bad"}">${x.status.replaceAll("_", " ")}</span></div>`).join("");
+  } else off.style.display = "none";
+  drawChart();
+}
+
+function drawChart() {
+  const c = $("chart"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const b = S.blue; if (!b || !b.history.length) { $("chartlabel").textContent = "Main-road driver speed (last 12 s)"; return; }
+  const H = b.history, t1 = H[H.length - 1][0], t0 = t1 - 12, vmax = 60;
+  g.strokeStyle = "#e5e7eb"; g.lineWidth = 1; g.font = "10px system-ui"; g.fillStyle = "#9ca3af";
+  for (const v of [0, 20, 40, 60]) { const y = h - 4 - v / vmax * (h - 12); g.beginPath(); g.moveTo(28, y); g.lineTo(w, y); g.stroke(); g.fillText(v, 4, y + 3); }
+  g.strokeStyle = "#2f6fed"; g.lineWidth = 2.2; g.beginPath();
+  H.forEach(([t, v], i) => { const x = 28 + (t - t0) / 12 * (w - 30), y = h - 4 - Math.min(v, vmax) / vmax * (h - 12); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+  $("chartlabel").textContent = `${b.id} speed (km/h): ${H[0][1]} → ${H[H.length - 1][1]}`;
+}
+
+// ---------------- map ----------------
+const cv = $("map"), ctx = cv.getContext("2d");
+let W = 0, Hh = 0;
+function resize() { const dpr = window.devicePixelRatio || 1; W = cv.clientWidth; Hh = cv.clientHeight; cv.width = W * dpr; cv.height = Hh * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+window.addEventListener("resize", resize); resize();
+
+function geom() {
+  const laneW = 30, xs = (W - 70) / 540, cx = W / 2, cy = Hh * 0.42, ys = laneW / 3.5;
+  return { laneW, xs, ys, cx, cy, X: a => cx + a * xs, Y: b => cy - b * ys };
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+
+function drawRoads(G) {
+  const { cx, cy, laneW, X } = G;
+  ctx.fillStyle = "#edf0f3"; ctx.fillRect(0, 0, W, Hh);
+  // simple blocks for a "map" feel
+  ctx.fillStyle = "#e1e6ec";
+  for (let i = -6; i <= 6; i++) { const x = cx + i * 120 - 40;
+    roundRect(x, cy - laneW - 120, 80, 85, 6); ctx.fill(); if (Math.abs(i) > 0) { roundRect(x, cy + laneW + 40, 80, 85, 6); ctx.fill(); } }
+  ctx.fillStyle = "#dbeedc"; roundRect(cx + 60, cy + laneW + 150, 150, 90, 8); ctx.fill(); roundRect(cx - 230, cy - laneW - 230, 140, 80, 8); ctx.fill();
+  // side road
+  const sw = 44;
+  ctx.fillStyle = "#fff"; ctx.fillRect(cx - sw / 2, cy, sw, Hh); ctx.strokeStyle = "#c9d1db"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx - sw / 2, cy + laneW); ctx.lineTo(cx - sw / 2, Hh); ctx.moveTo(cx + sw / 2, cy + laneW); ctx.lineTo(cx + sw / 2, Hh); ctx.stroke();
+  // main road
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, cy - laneW, W, laneW * 2);
+  ctx.beginPath(); ctx.moveTo(0, cy - laneW); ctx.lineTo(W, cy - laneW); ctx.moveTo(0, cy + laneW); ctx.lineTo(cx - sw / 2, cy + laneW);
+  ctx.moveTo(cx + sw / 2, cy + laneW); ctx.lineTo(W, cy + laneW); ctx.stroke();
+  ctx.setLineDash([14, 12]); ctx.strokeStyle = "#b8c2ce"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke(); ctx.setLineDash([]);
+  // stop line
+  ctx.strokeStyle = "#9aa5b1"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - sw / 2 + 3, cy + laneW + 4); ctx.lineTo(cx + sw / 2 - 3, cy + laneW + 4); ctx.stroke();
+  // direction arrows + labels
+  ctx.fillStyle = "#64748b"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+  ctx.fillText("← near lane: traffic from the right", X(-250) + 6, cy + laneW + 56);
+  ctx.textAlign = "right"; ctx.fillText("far lane: traffic from the left →", X(250) - 6, cy - laneW - 30);
+  // distance ticks (own row, under the car labels)
+  ctx.textAlign = "center"; ctx.font = "11px system-ui"; ctx.fillStyle = "#9ca3af";
+  for (let a = -250; a <= 250; a += 50) { if (!a) continue; ctx.fillRect(X(a) - 0.5, cy + laneW, 1, 5); ctx.fillText(Math.abs(a) + " m", X(a) + (a > 0 ? 0 : 0), cy + laneW + 36); }
+}
+
+function drawZones(G) {
+  const { cy, laneW, X } = G;
+  // offer zones (where drivers can be asked: 80-250 m out)
+  const [m0, m1] = S.match;
+  ctx.fillStyle = "rgba(245,158,11,.10)";
+  ctx.fillRect(X(m0), cy, X(m1) - X(m0), laneW); ctx.fillRect(X(-m1), cy - laneW, X(-m0) - X(-m1), laneW);
+  ctx.fillStyle = "#b45309"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center";
+  ctx.fillText(`offer zone ${m0}–${m1} m`, (X(m0) + X(m1)) / 2, cy + laneW + 56);
+  ctx.fillText(`offer zone ${m0}–${m1} m`, (X(-m0) + X(-m1)) / 2, cy - laneW - 30);
+  // geofence
+  ctx.strokeStyle = "rgba(47,111,237,.55)"; ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5;
+  for (const a of [-S.geofence, S.geofence]) { ctx.beginPath(); ctx.moveTo(X(a), 70); ctx.lineTo(X(a), Hh - 60); ctx.stroke(); }
+  ctx.setLineDash([]); ctx.fillStyle = "#2f6fed"; ctx.font = "600 11px system-ui";
+  ctx.fillText(`${S.geofence} m geofence`, X(S.geofence) - 4, 84); ctx.fillText(`${S.geofence} m geofence`, X(-S.geofence) + 4, 84);
+}
+
+function drawTicket(G) {
+  const t = S.ticket; if (!t || !t.active) return;
+  const { cx, cy, laneW, X, Y } = G;
+  for (const l of t.lanes) {
+    const near = l.lane === "MAIN_NEAR", y0 = near ? cy : cy - laneW;
+    const lead = S.vehicles.find(v => v.id === l.lead);
+    const aEnd = lead ? lead.a : (near ? S.geofence : -S.geofence);
+    const x0 = X(0), x1 = X(aEnd);
+    ctx.fillStyle = l.clear ? "rgba(34,197,94,.30)" : "rgba(239,68,68,.25)";
+    ctx.fillRect(Math.min(x0, x1), y0 + 2, Math.abs(x1 - x0), laneW - 4);
+    ctx.fillStyle = l.clear ? "#15803d" : "#b91c1c"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center";
+    const txt = lead ? `${l.tta} s ${l.clear ? "✓" : "✗"}` : "empty ✓";
+    if (Math.abs(x1 - x0) > 70) ctx.fillText(txt, (x0 + x1) / 2 + (near ? -6 : 6), near ? cy + laneW - 9 : cy - laneW + 19);
+  }
+  // exit path for the waiting car
+  const red = S.vehicles.find(v => v.id === t.red); if (!red) return;
+  const col = (TSTATE[t.state] || ["#1f2937"])[0], right = t.turn !== "LEFT";
+  const sy = Y(red.b), ly = right ? cy - laneW / 2 : cy + laneW / 2, dir = right ? 1 : -1;
+  ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.setLineDash([10, 8]); ctx.lineDashOffset = -performance.now() / 40;
+  ctx.beginPath(); ctx.moveTo(cx, sy - 12); ctx.lineTo(cx, ly + (right ? 10 : 0)); ctx.quadraticCurveTo(cx, ly, cx + dir * 14, ly); ctx.lineTo(cx + dir * 110, ly); ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(cx + dir * 122, ly); ctx.lineTo(cx + dir * 108, ly - 7); ctx.lineTo(cx + dir * 108, ly + 7); ctx.fill();
+}
+
+function drawCars(G, now) {
+  const { X, Y } = G, ids = new Set();
+  for (const v of S.vehicles) {
+    ids.add(v.id);
+    const tx = X(v.a), ty = Y(v.b), tang = Math.atan2(-v.db, v.da || (v.db ? 0 : 1));
+    const s = shown[v.id];
+    if (!s || Math.hypot(s.x - tx, s.y - ty) > 120) shown[v.id] = { x: tx, y: ty, ang: tang };
+    else { s.x += (tx - s.x) * 0.25; s.y += (ty - s.y) * 0.25; s.ang = tang; }
+  }
+  for (const id in shown) if (!ids.has(id)) delete shown[id];
+  ctx.textAlign = "center";
+  for (const v of S.vehicles) {
+    const p = shown[v.id]; if (!p) continue;
+    // rings
+    if (v.ui === "PROMPT_YIELD") { const r = 15 + 5 * Math.sin(now / 160); ctx.strokeStyle = "rgba(245,158,11,.95)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.stroke(); ctx.strokeStyle = "rgba(245,158,11,.35)"; ctx.beginPath(); ctx.arc(p.x, p.y, r + 9, 0, 7); ctx.stroke(); }
+    if (v.ui === "YIELD_CONFIRMED") { ctx.strokeStyle = "rgba(34,197,94,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 16, 0, 7); ctx.stroke(); }
+    // body
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.ang);
+    ctx.fillStyle = COL[v.kin] || "#94a3b8"; roundRect(-12, -6.5, 24, 13, 4); ctx.fill();
+    ctx.lineWidth = v.red ? 3 : 1.5; ctx.strokeStyle = v.red ? "#b91c1c" : "rgba(15,23,42,.55)"; ctx.stroke();
+    ctx.fillStyle = "rgba(15,23,42,.55)"; ctx.fillRect(4, -5, 4, 10);           // windscreen = front
+    ctx.restore();
+    // label
+    ctx.font = v.red ? "700 12px system-ui" : "11px system-ui"; ctx.fillStyle = v.red ? "#b91c1c" : "#475569";
+    const onSide = v.lane === "SIDE_ROAD";
+    if (onSide) { ctx.textAlign = "left"; ctx.fillText(`${v.id}${v.kin === "TRAPPED" ? " · stuck" : ""}`, p.x + 28, p.y + 4); ctx.textAlign = "center"; }
+    else if (Math.abs(v.a) < 270) ctx.fillText(v.id, p.x, p.y + (v.b < 0 ? 26 : -16));
+  }
+  // +10 floaters
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i], age = (now - f.at) / 1000, p = shown[f.id];
+    if (age > 2.5 || !p) { floaters.splice(i, 1); continue; }
+    ctx.globalAlpha = 1 - age / 2.5; ctx.fillStyle = "#d4a017"; ctx.font = "800 18px system-ui";
+    ctx.fillText(`+${S.reward}`, p.x, p.y - 22 - age * 26); ctx.globalAlpha = 1;
+  }
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!S || !W) return;
+  const G = geom();
+  drawRoads(G); drawZones(G); drawTicket(G); drawCars(G, now);
+  if (S.ticket && S.ticket.active && S.ticket.state === "ABORT_RED") {
+    ctx.strokeStyle = `rgba(217,56,56,${0.45 + 0.45 * Math.sin(now / 90)})`; ctx.lineWidth = 14; ctx.strokeRect(7, 7, W - 14, Hh - 14);
+  }
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
