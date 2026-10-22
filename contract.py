@@ -1,5 +1,5 @@
 """
-contract.py  —  THE DATA CONTRACT (owned by Member 3)
+contract.py  —  THE DATA CONTRACT 
 =====================================================
 Every teammate imports names from here instead of typing strings by hand.
 If two people spell a state differently ("YIELD" vs "YIELDING") the demo breaks,
@@ -9,7 +9,7 @@ RULE: only Member 3 edits this file. Any change -> bump CONTRACT_VERSION and
 announce it in the group chat ("CONTRACT v1.1: added field X").
 """
 
-CONTRACT_VERSION = "1.2"   # v1.1: raw IMU field names, Member 2 reset rules · v1.2: ALERT_SPEC (sound/visual per ui_command)
+CONTRACT_VERSION = "1.3"   # v1.1: raw IMU field names, Member 2 reset rules · v1.2: ALERT_SPEC · v1.3: reward 10 tokens
 
 # ---------------------------------------------------------------------------
 # 1. Timing + tunable numbers (change these to tune the demo)
@@ -25,8 +25,8 @@ ABORT_HOLD_S = 3             # red screen stays at least 3 s after an abort
 TICKET_MAX_S = 300           # give up on a ticket after 5 minutes
 EXIT_SPEED_KMH = 5           # red car counts as "moving out" above this speed
 COMMITTED_SPEED_KMH = 2      # red car has started moving -> don't flip its green light (except ABORT)
-REWARD_TOKENS = 50           # tokens per yielding car
-DAILY_CAP_TOKENS = 500       # anti-farming: max tokens one user can earn per day
+REWARD_TOKENS = 10           # tokens per yielding car
+DAILY_CAP_TOKENS = 100       # anti-farming: max tokens one user can earn per day
 OFFLINE_RECEIPT_MAX_AGE_S = 24 * 3600
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ UI_DONE = "DONE"                   # back to normal
 UI_CRUISE = "CRUISE"               # Screen B1
 UI_PROMPT_YIELD = "PROMPT_YIELD"   # Screen B2: amber banner + voice
 UI_YIELD_CONFIRMED = "YIELD_CONFIRMED"  # Screen B3a: "Yield detected, holding gap"
-UI_PAYOUT = "PAYOUT"               # Screen B3b: "+50 Tokens"
+UI_PAYOUT = "PAYOUT"               # Screen B3b: "+10 Tokens"
 
 # ---------------------------------------------------------------------------
 # 5b. How each ui_command is DELIVERED (Members 4, 5 and the god-view use this)
@@ -108,11 +108,11 @@ ALERT_SPEC = {
     UI_CRUISE:          {"visual": "none / dismiss banner", "sound": None, "voice": None,
                          "vibrate": None, "fullscreen": False},
     UI_PROMPT_YIELD:    {"visual": "amber banner over maps app", "sound": "soft_chime",
-                         "voice": "Car waiting ahead. Ease off to earn 50 tokens.",
+                         "voice": "Car waiting ahead. Ease off to earn 10 tokens.",
                          "vibrate": None, "fullscreen": False},
     UI_YIELD_CONFIRMED: {"visual": "banner turns green: Holding gap", "sound": "thank_you_chime",
                          "voice": None, "vibrate": None, "fullscreen": False},
-    UI_PAYOUT:          {"visual": "notification: +50 Township Tokens", "sound": None,
+    UI_PAYOUT:          {"visual": "notification: +10 Tokens", "sound": None,
                          "voice": None, "vibrate": None, "fullscreen": False},
     UI_SCANNING:        {"visual": "radar + wait timer", "sound": None, "voice": None,
                          "vibrate": None, "fullscreen": True},
